@@ -30,12 +30,12 @@ endif()
 option(LIBIGL_USE_STATIC_LIBRARY "Use LibIGL as static library" OFF)
 
 # add a customizable menu bar
-option(LIBIGL_WITH_NANOGUI     "Use Nanogui menu"   OFF)
+option(LIBIGL_WITH_NANOGUI     "Use Nanogui menu"   ON)
 
 # libigl options: choose your dependencies (by default everything is OFF except opengl)
 option(LIBIGL_WITH_VIEWER      "Use OpenGL viewer"  ON)
 option(LIBIGL_WITH_OPENGL      "Use OpenGL"         ON)
-option(LIBIGL_WITH_OPENGL_GLFW "Use GLFW"           ON)
+option(LIBIGL_WITH_OPENGL_GLFW "Use GLFW"           OFF)
 option(LIBIGL_WITH_BBW         "Use BBW"            OFF)
 option(LIBIGL_WITH_EMBREE      "Use Embree"         OFF)
 option(LIBIGL_WITH_PNG         "Use PNG"            OFF)
@@ -67,6 +67,7 @@ message("libigl definitions: ${LIBIGL_DEFINITIONS}")
 
 # Prepare the build environment
 include_directories(${LIBIGL_INCLUDE_DIRS})
+set(${LIBIGL_DEFINITIONS} ${LIBIGL_DEFINITIONS} -DIGL_VIEWER_WITH_NANOGUI -DLIBIGL_USE_STATIC_LIBRARY=OFF)
 add_definitions(${LIBIGL_DEFINITIONS})
 
 # Add your project files
@@ -77,9 +78,10 @@ target_link_libraries(${PROJECT_NAME}_bin ${LIBIGL_LIBRARIES} ${LIBIGL_EXTRA_LIB
 #===============================================================================
 # Copy Resources
 #===============================================================================
+#MESSAGE(aaaaa $<TARGET_FILE_DIR:${PROJECT_NAME}>/resources)
 add_custom_command(
-        TARGET ${PROJECT_NAME} PRE_BUILD
+        TARGET ${PROJECT_NAME}_bin PRE_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory   # Copy resources
         ${CMAKE_SOURCE_DIR}/resources
-        $<TARGET_FILE_DIR:${PROJECT_NAME}>/resources
+        $<TARGET_FILE_DIR:${PROJECT_NAME}_bin>/resources
 )

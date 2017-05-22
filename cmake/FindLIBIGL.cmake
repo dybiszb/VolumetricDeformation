@@ -11,8 +11,11 @@ if(NOT LIBIGL_FOUND)
             ${PROJECT_SOURCE_DIR}/../../include
             ${PROJECT_SOURCE_DIR}/../include
             ${PROJECT_SOURCE_DIR}/include
+            ${PROJECT_SOURCE_DIR}/libigl/include
             ${PROJECT_SOURCE_DIR}/../libigl/include
             ${PROJECT_SOURCE_DIR}/../../libigl/include
+            ${PROJECT_SOURCE_DIR}/external/libigl/include
+
             ${LIBIGL}/include
             $ENV{LIBIGL}/include
             $ENV{LIBIGLROOT}/include
