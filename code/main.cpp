@@ -1,33 +1,52 @@
 #include <igl/readOFF.h>
 #include <igl/viewer/Viewer.h>
 
+#include "twisting.h"
+#include "scaling.h"
+#include "tapering.h"
+#include "bending.h"
+
+//==============================================================================
+// Loaded Model
+//==============================================================================
 Eigen::MatrixXd V;
 Eigen::MatrixXi F;
 Eigen::MatrixXd N;
 
+//==============================================================================
+// Scaling Factors
+//==============================================================================
 double scalingFactorX = 1.1;
 double scalingFactorY = 1.1;
 double scalingFactorZ = 1.1;
 
-enum TaperingAxis {
-    X = 0, Y, Z,
-} taperingAxis = Y;
-enum TaperingType {
-    Linear = 0, Quadratic
-} taperingType = Linear;
-
+//==============================================================================
+// Tapering factors
+//==============================================================================
 double taperingAlpha0 = 1.0;
 double taperingAlpha1 = 0.3;
-double taperingAlpha2 = 0.3;
 
-double twistScale = 0.1;
+//==============================================================================
+// Twisting Factors
+//==============================================================================
+double twistScale = 90;
 
+//==============================================================================
+// Bending Factors
+//==============================================================================
+double centerOfBend = 0.0;
+double yMax = 0.1;
+double yMin = -0.1;
+double bendRate = 0.2;
+
+//==============================================================================
+// General Settings
+//==============================================================================
 Eigen::Matrix3d axisStart;
 Eigen::Matrix3d axisEnd;
 double axisScale = 0.1;
-double normalsScale = 0.05;
+double normalsScale = 0.01;
 bool showNormals = false;
-
 igl::viewer::Viewer viewer;
 
 void updateScene(igl::viewer::Viewer &viewer) {
@@ -38,103 +57,6 @@ void updateScene(igl::viewer::Viewer &viewer) {
     viewer.data.add_edges(axisStart, axisScale * axisEnd, axisEnd);
 }
 
-void scaleModel(double a1, double a2, double a3) {
-    // Vertices
-    Eigen::MatrixXd m(3, 3);
-    m << a1, 0, 0, 0, a2, 0, 0, 0, a3;
-    V = V * m.transpose();
-
-    // Normals
-    Eigen::MatrixXd invTJac(3, 3);
-    invTJac << 1.0 / a1, 0, 0, 0, 1.0 / a2, 0, 0, 0, 1.0 / a3;
-    N = (invTJac * N.transpose()).transpose();
-    N.rowwise().normalize();
-}
-
-using TaperingStrategyT = std::function<void(double, double &, double &)>;
-
-void linearTaper(double fixedAxisValue, double &r, double &rPrim) {
-    r = taperingAlpha0 + taperingAlpha1 * fixedAxisValue;
-    rPrim = taperingAlpha1;
-}
-
-void inverseLinearTaper(double fixedAxisValue, double &r, double &rPrim) {
-    r = 1.0 / (taperingAlpha0 + taperingAlpha1 * fixedAxisValue);
-//    rPrim = -taperingAlpha1 * (1.0 / (fixedAxisValue * fixedAxisValue));
-//    rPrim = - 2 * (1.0 / (r * r));
-}
-
-void quadraticTaper(double fixedAxisValue, double &r, double &rPrim) {
-    r = taperingAlpha0 + taperingAlpha1 * fixedAxisValue +
-        taperingAlpha2 * fixedAxisValue * fixedAxisValue;
-    rPrim = taperingAlpha1 + 2 * taperingAlpha2 * fixedAxisValue;
-}
-
-void inverseQuadraticTaper(double fixedAxisValue, double &r, double &rPrim) {
-    r = 1.0 / (taperingAlpha0 + taperingAlpha1 * fixedAxisValue +
-               taperingAlpha2 * fixedAxisValue * fixedAxisValue);
-//    rPrim = -taperingAlpha1 * (1.0 / (fixedAxisValue * fixedAxisValue)) -
-//            2.0 * taperingAlpha2 *
-//            (1.0 / (fixedAxisValue * fixedAxisValue * fixedAxisValue));
-
-//    rPrim = - 2 * (1.0 / (r * r));
-}
-
-void taperModel(const TaperingStrategyT &taperingF) {
-    double fixedAxis, coord1, coord2,fixedAxisCoord, r, rPrim;
-    for (int i = 0; i < V.rows(); ++i) {
-
-        // Get Appropriate Coordinates
-        switch (taperingAxis) {
-            case X:
-                fixedAxisCoord = 0;
-                fixedAxis = V(i, fixedAxisCoord);
-                coord1 = 1;
-                coord2 = 2;
-                break;
-            case Y:
-                fixedAxisCoord = 1;
-                fixedAxis = V(i, fixedAxisCoord);
-                coord1 = 0;
-                coord2 = 2;
-                break;
-            case Z:
-                fixedAxisCoord = 2;
-                fixedAxis = V(i, fixedAxisCoord);
-                coord1 = 0;
-                coord2 = 1;
-                break;
-            default:
-                throw std::runtime_error(
-                        "Wrong axis specified during tapering");
-        }
-
-        taperingF(fixedAxis, r, rPrim);
-
-        // Update Vertices
-        V(i, coord1) *= r;
-        V(i, coord2) *= r;
-
-        // Update Normals
-        // TODO:
-//        N(i, coord1) *=r;
-//        N(i, coord2) *=r;
-//        N(i, fixedAxisCoord) = -r * rPrim * coord1 * N(i, coord1)
-//                -r * rPrim * coord2 * N(i, coord2) + r * r * N(i, fixedAxisCoord);
-    }
-}
-
-void twistModel() {
-    for (int i = 0; i < V.rows(); ++i) {
-        double z = V(i, 2);
-        double theta = 0.0174532925 *  1000 * z;
-        double C_theta = cos(theta);
-        double S_theta = sin(theta);
-
-        V(i, 0) = V(i, 0) * C_theta - V(i, 1) * S_theta;
-        V(i, 1) = V(i, 0) * C_theta + V(i, 1) * S_theta;
-    }
-}
 
 void initializeCoordinatesFrame() {
     axisStart << 0, 0, 0, 0, 0, 0, 0, 0, 0;
@@ -147,10 +69,16 @@ void moveModelToCenterOfCoordinates() {
     for (int i = 0; i < V.rows(); ++i) V.row(i) -= centerOfMass;
 }
 
+void loadModel() {
+    igl::readOFF("./resources/bunny.off", V, F);
+    moveModelToCenterOfCoordinates();
+    igl::per_vertex_normals(V, F, N);
+}
+
 void initializeUI(igl::viewer::Viewer &viewer) {
     // Extend viewer menu
     viewer.callback_init = [&](igl::viewer::Viewer &viewer) {
-        viewer.ngui->addWindow(Eigen::Vector2i(1000, 10), "Transformations");
+        viewer.ngui->addWindow(Eigen::Vector2i(1030, -30), "Transformations");
 
         /* ------------------- */
         /* ----- Scaling ----- */
@@ -160,12 +88,12 @@ void initializeUI(igl::viewer::Viewer &viewer) {
         viewer.ngui->addVariable("Scale Y axis", scalingFactorY);
         viewer.ngui->addVariable("Scale Z axis", scalingFactorZ);
         viewer.ngui->addButton("Scale", [&]() {
-            scaleModel(scalingFactorX, scalingFactorY, scalingFactorZ);
+            scaleModel(V, N, scalingFactorX, scalingFactorY, scalingFactorZ);
             updateScene(viewer);
         });
 
         viewer.ngui->addButton("Inverse Scale", [&]() {
-            scaleModel(1.0 / scalingFactorX, 1.0 / scalingFactorY,
+            scaleModel(V, N, 1.0 / scalingFactorX, 1.0 / scalingFactorY,
                        1.0 / scalingFactorZ);
             updateScene(viewer);
         });
@@ -178,31 +106,14 @@ void initializeUI(igl::viewer::Viewer &viewer) {
                                  taperingAlpha0);
         viewer.ngui->addVariable("Tapering Function [alpha1]",
                                  taperingAlpha1);
-        viewer.ngui->addVariable("Tapering Function [alpha2]",
-                                 taperingAlpha2);
-        viewer.ngui->addVariable<TaperingType>("Function Type",
-                                               taperingType)->setItems(
-                {"Linear", "Quadratic"});
-        viewer.ngui->addVariable<TaperingAxis>("Fixed Axis",
-                                               taperingAxis)->setItems(
-                {"X", "Y", "Z"});
-        viewer.ngui->addButton("Taper", [&]() {
-            if (taperingType == TaperingType::Linear) {
-                taperModel(linearTaper);
-            } else {
-                taperModel(quadraticTaper);
-            }
 
+        viewer.ngui->addButton("Taper", [&]() {
+            linearTaperZ(V, N, taperingAlpha0, taperingAlpha1);
             updateScene(viewer);
         });
 
         viewer.ngui->addButton("Inverse Taper", [&]() {
-            if (taperingType == TaperingType::Linear) {
-                taperModel(inverseLinearTaper);
-            } else {
-                taperModel(inverseQuadraticTaper);
-            }
-
+            inverseLinearTaperZ(V, N, taperingAlpha0, taperingAlpha1);
             updateScene(viewer);
         });
 
@@ -210,23 +121,38 @@ void initializeUI(igl::viewer::Viewer &viewer) {
         /* ----- Axial Twist ----- */
         /* ----------------------- */
         viewer.ngui->addGroup("Twisting");
-        viewer.ngui->addVariable<double>("Degrees (temp)", [&](double degree) {
-            twistScale = 0.0174532925 * degree;
+        viewer.ngui->addVariable<double>("Strength along Z", [&](double degree) {
+            twistScale = degree;
         }, [&]() {
             return twistScale;
         });
         viewer.ngui->addButton("Twist", [&]() {
-            twistModel();
+            twistModelZ(V, N, twistScale);
+            updateScene(viewer);
+        });
+        viewer.ngui->addButton("Inverse Twist", [&]() {
+            inverseTwistModelZ(V, N, twistScale);
             updateScene(viewer);
         });
 
+        /* ------------------- */
+        /* ----- Bending ------ */
+        /* ------------------- */
+        viewer.ngui->addGroup("Bending");
+        viewer.ngui->addVariable("Center of bend", centerOfBend);
+        viewer.ngui->addVariable("Y min", yMin);
+        viewer.ngui->addVariable("Y max", yMax);
+        viewer.ngui->addVariable("Bend rate", bendRate);
 
-
+        viewer.ngui->addButton("Bend", [&]() {
+            bendModel(V, N, centerOfBend, yMax, yMin, bendRate);
+            updateScene(viewer);
+        });
 
         /* ------------------- */
-        /* ----- Normals ----- */
+        /* ----- Global ------ */
         /* ------------------- */
-        viewer.ngui->addGroup("Normals");
+        viewer.ngui->addGroup("Global Settings");
         viewer.ngui->addVariable<bool>("Normals Scaling", [&](bool show) {
             showNormals = show;
             updateScene(viewer);
@@ -239,6 +165,10 @@ void initializeUI(igl::viewer::Viewer &viewer) {
         }, [&]() {
             return normalsScale;
         });
+        viewer.ngui->addButton("Reset Model", [&]() {
+            loadModel();
+            updateScene(viewer);
+        });
 
         viewer.screen->performLayout();
         return false;
@@ -246,10 +176,7 @@ void initializeUI(igl::viewer::Viewer &viewer) {
 }
 
 int main(int argc, char *argv[]) {
-    igl::readOFF("./resources/lion.off", V, F);
-    moveModelToCenterOfCoordinates();
-    igl::per_vertex_normals(V, F, N);
-
+    loadModel();
     initializeCoordinatesFrame();
     initializeUI(viewer);
     updateScene(viewer);
@@ -258,3 +185,100 @@ int main(int argc, char *argv[]) {
 
 
 
+
+////////////////////// LEGACY
+
+//double taperingAlpha2 = 0.3;
+
+//enum TaperingAxis {
+//    X = 0, Y, Z,
+//} taperingAxis = Y;
+//enum TaperingType {
+//    Linear = 0, Quadratic
+//} taperingType = Linear;
+
+
+//        viewer.ngui->addVariable("Tapering Function [alpha2]",
+//                                 taperingAlpha2);
+//        viewer.ngui->addVariable<TaperingType>("Function Type",
+//                                               taperingType)->setItems(
+//                {"Linear", "Quadratic"});
+//        viewer.ngui->addVariable<TaperingAxis>("Fixed Axis",
+//                                               taperingAxis)->setItems(
+//                {"X", "Y", "Z"});
+//
+
+
+//
+//using TaperingStrategyT = std::function<void(double, double &, double &)>;
+//
+//void linearTaper(double fixedAxisValue, double &r, double &rPrim) {
+//    r = taperingAlpha0 + taperingAlpha1 * fixedAxisValue;
+//    rPrim = taperingAlpha1;
+//}
+//
+//void inverseLinearTaper(double fixedAxisValue, double &r, double &rPrim) {
+//    r = 1.0 / (taperingAlpha0 + taperingAlpha1 * fixedAxisValue);
+////    rPrim = -taperingAlpha1 * (1.0 / (fixedAxisValue * fixedAxisValue));
+////    rPrim = - 2 * (1.0 / (r * r));
+//}
+//
+//void quadraticTaper(double fixedAxisValue, double &r, double &rPrim) {
+//    r = taperingAlpha0 + taperingAlpha1 * fixedAxisValue +
+//        taperingAlpha2 * fixedAxisValue * fixedAxisValue;
+//    rPrim = taperingAlpha1 + 2 * taperingAlpha2 * fixedAxisValue;
+//}
+//
+//void inverseQuadraticTaper(double fixedAxisValue, double &r, double &rPrim) {
+//    r = 1.0 / (taperingAlpha0 + taperingAlpha1 * fixedAxisValue +
+//               taperingAlpha2 * fixedAxisValue * fixedAxisValue);
+////    rPrim = -taperingAlpha1 * (1.0 / (fixedAxisValue * fixedAxisValue)) -
+////            2.0 * taperingAlpha2 *
+////            (1.0 / (fixedAxisValue * fixedAxisValue * fixedAxisValue));
+//
+////    rPrim = - 2 * (1.0 / (r * r));
+//}
+//
+//void taperModel(const TaperingStrategyT &taperingF) {
+//    double fixedAxis, coord1, coord2,fixedAxisCoord, r, rPrim;
+//    for (int i = 0; i < V.rows(); ++i) {
+//
+//        // Get Appropriate Coordinates
+//        switch (taperingAxis) {
+//            case X:
+//                fixedAxisCoord = 0;
+//                fixedAxis = V(i, fixedAxisCoord);
+//                coord1 = 1;
+//                coord2 = 2;
+//                break;
+//            case Y:
+//                fixedAxisCoord = 1;
+//                fixedAxis = V(i, fixedAxisCoord);
+//                coord1 = 0;
+//                coord2 = 2;
+//                break;
+//            case Z:
+//                fixedAxisCoord = 2;
+//                fixedAxis = V(i, fixedAxisCoord);
+//                coord1 = 0;
+//                coord2 = 1;
+//                break;
+//            default:
+//                throw std::runtime_error(
+//                        "Wrong axis specified during tapering");
+//        }
+//
+//        taperingF(fixedAxis, r, rPrim);
+//
+//        // Update Vertices
+//        V(i, coord1) *= r;
+//        V(i, coord2) *= r;
+//
+//        // Update Normals
+//        // TODO:
+////        N(i, coord1) *=r;
+////        N(i, coord2) *=r;
+////        N(i, fixedAxisCoord) = -r * rPrim * coord1 * N(i, coord1)
+////                -r * rPrim * coord2 * N(i, coord2) + r * r * N(i, fixedAxisCoord);
+//    }
+//}
